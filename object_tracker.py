@@ -105,6 +105,11 @@ def main(_argv):
         out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
 
     frame_num = 0
+
+    new_objects_positions = {}
+    inside_persons_count = 0
+
+
     # while video is running
     while True:
         return_value, frame = vid.read()
@@ -196,6 +201,9 @@ def main(_argv):
             print("Objects being tracked: {}".format(count))
         """
 
+        old_objects_positions = new_objects_positions
+        new_objects_positions = {}
+
         if FLAGS.count:
             # draw border
             for p in border_points:
@@ -260,11 +268,6 @@ def main(_argv):
         # Call the tracker
         tracker.predict()
         tracker.update(detections)
-
-
-        old_objects_positions = new_objects_positions
-        new_objects_positions = {}
-
 
         # update tracks
         for track in tracker.tracks:
