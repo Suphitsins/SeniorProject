@@ -38,6 +38,20 @@ flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_boolean('info', False, 'show detailed info of tracked objects')
 flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
 
+
+border_points = []
+
+# set mouse events
+def mouse_drawing(event, x, y, flags, params):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print("new border_point")
+        print(x, y)
+
+        border_points.append((x,y))
+        if len(border_points) > 2:
+            border_points.pop(0)
+
+
 def main(_argv):
     # Definition of the parameters
     max_cosine_distance = 0.4
@@ -101,7 +115,7 @@ def main(_argv):
             print('Video has ended or failed, try a different video format!')
             break
         frame_num +=1
-        print('Frame #: ', frame_num)
+        print('Frame : ', frame_num)
         frame_size = frame.shape[:2]
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
@@ -174,9 +188,56 @@ def main(_argv):
                 names.append(class_name)
         names = np.array(names)
         count = len(names)
+       
+       
+        """
         if FLAGS.count:
             cv2.putText(frame, "Objects being tracked: {}".format(count), (5, 600), cv2.FONT_HERSHEY_COMPLEX_SMALL, 2, (0, 255, 0), 2)
             print("Objects being tracked: {}".format(count))
+        """
+
+        if FLAGS.count:
+            # draw border
+            for p in border_points:
+                cv2.circle(frame, (p[0], p[1]), 4, (0, 0, 255), -1)
+
+            if len(border_points) == 2:
+                # draw border
+                cv2.line(frame, border_points[0], border_points[1], (0, 255, 255), 2)
+
+                # draw vector meaning interior
+                start_point = (int((border_points[0][0] + border_points[1][0])/2),  
+                            int((border_points[0][1] + border_points[1][1])/2))
+
+                end_point =  ((int((start_point[1] - border_points[0][1])/2)) + start_point[0], 
+                            (int((start_point[0] - border_points[0][0])/2) * (-1)) + start_point[1])
+
+                cv2.arrowedLine(frame, start_point, end_point, (255, 0, 0), 2)
+
+                n = (end_point[0] - start_point[0], end_point[1] - start_point[1])
+
+                for id, coordinate in new_objects_positions.items():
+                    v = ( coordinate[0][0] - start_point[0], coordinate[0][1] - start_point[1] )
+                    # calculate scalar product 
+                    coordinate[1] = np.sign(v[0]*n[0] + v[1]*n[1])
+                    print("Tracker ID: {}, Class: {},  Site: {}".format(str(track.track_id), class_name, (coordinate)))
+                    if id in old_objects_positions:
+                        if (old_objects_positions[id][1] == -1) and coordinate[1] == 1:
+                            inside_persons_count = inside_persons_count + 1
+                        elif (old_objects_positions[id][1] == 1) and coordinate[1] == -1:
+                            inside_persons_count = inside_persons_count - 1
+                    
+            # print number of person inside
+            print("shoes passed: {}".format(inside_persons_count))
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(frame, f'Shoes passed: {inside_persons_count}', (0 + 10, height- 10), font, 0.5, (255,255,0), 1, cv2.LINE_4)       
+       
+       
+       
+       
+       
+       
+       
         # delete detections that are not in allowed_classes
         bboxes = np.delete(bboxes, deleted_indx, axis=0)
         scores = np.delete(scores, deleted_indx, axis=0)
@@ -199,6 +260,11 @@ def main(_argv):
         # Call the tracker
         tracker.predict()
         tracker.update(detections)
+
+
+        old_objects_positions = new_objects_positions
+        new_objects_positions = {}
+
 
         # update tracks
         for track in tracker.tracks:
