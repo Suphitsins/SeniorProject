@@ -9,8 +9,10 @@ if len(physical_devices) > 0:
 from absl import app, flags, logging
 from absl.flags import FLAGS
 import core.utils as utils
+
 from core.yolov4 import filter_boxes
 from tensorflow.python.saved_model import tag_constants
+
 from core.config import cfg
 from PIL import Image
 import cv2
@@ -23,6 +25,12 @@ from deep_sort import preprocessing, nn_matching
 from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 from tools import generate_detections as gdet
+
+# MOTA metrics imports
+import motmetrics as mm
+# csv imports
+import csv
+
 flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
 flags.DEFINE_string('weights', './checkpoints/yolov4-416',
                     'path to weights file')
@@ -37,20 +45,6 @@ flags.DEFINE_float('score', 0.50, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_boolean('info', False, 'show detailed info of tracked objects')
 flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
-
-
-border_points = []
-
-# set mouse events
-def mouse_drawing(event, x, y, flags, params):
-    if event == cv2.EVENT_LBUTTONDOWN:
-        print("new border_point")
-        print(x, y)
-
-        border_points.append((x,y))
-        if len(border_points) > 2:
-            border_points.pop(0)
-
 
 def main(_argv):
     # Definition of the parameters
@@ -95,6 +89,8 @@ def main(_argv):
 
     out = None
 
+    acc = mm.MOTAccumulator(auto_id=True)
+
     # get video ready to save locally if flag is set
     if FLAGS.output:
         # by default VideoCapture returns float instead of int
@@ -109,9 +105,9 @@ def main(_argv):
     new_objects_positions = {}
     inside_persons_count = 0
 
-
     # while video is running
     while True:
+        print("_________________________________________________________________________________")
         return_value, frame = vid.read()
         if return_value:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -120,12 +116,14 @@ def main(_argv):
             print('Video has ended or failed, try a different video format!')
             break
         frame_num +=1
-        print('Frame : ', frame_num)
+        print('Frame #: ', frame_num)
         frame_size = frame.shape[:2]
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
         image_data = image_data[np.newaxis, ...].astype(np.float32)
         start_time = time.time()
+        
+        
 
         # run detections on tflite if flag is set
         if FLAGS.framework == 'tflite':
@@ -182,6 +180,7 @@ def main(_argv):
         #allowed_classes = ['person']
 
         # loop through objects and use class index to get class name, allow only classes in allowed_classes list
+        print(bboxes)
         names = []
         deleted_indx = []
         for i in range(num_objects):
@@ -193,59 +192,9 @@ def main(_argv):
                 names.append(class_name)
         names = np.array(names)
         count = len(names)
-       
-       
-        """
-        if FLAGS.count:
-            cv2.putText(frame, "Objects being tracked: {}".format(count), (5, 600), cv2.FONT_HERSHEY_COMPLEX_SMALL, 2, (0, 255, 0), 2)
-            print("Objects being tracked: {}".format(count))
-        """
 
-        old_objects_positions = new_objects_positions
-        new_objects_positions = {}
-
-        if FLAGS.count:
-            # draw border
-            for p in border_points:
-                cv2.circle(frame, (p[0], p[1]), 4, (0, 0, 255), -1)
-
-            if len(border_points) == 2:
-                # draw border
-                cv2.line(frame, border_points[0], border_points[1], (0, 255, 255), 2)
-
-                # draw vector meaning interior
-                start_point = (int((border_points[0][0] + border_points[1][0])/2),  
-                            int((border_points[0][1] + border_points[1][1])/2))
-
-                end_point =  ((int((start_point[1] - border_points[0][1])/2)) + start_point[0], 
-                            (int((start_point[0] - border_points[0][0])/2) * (-1)) + start_point[1])
-
-                cv2.arrowedLine(frame, start_point, end_point, (255, 0, 0), 2)
-
-                n = (end_point[0] - start_point[0], end_point[1] - start_point[1])
-
-                for id, coordinate in new_objects_positions.items():
-                    v = ( coordinate[0][0] - start_point[0], coordinate[0][1] - start_point[1] )
-                    # calculate scalar product 
-                    coordinate[1] = np.sign(v[0]*n[0] + v[1]*n[1])
-                    print("Tracker ID: {}, Class: {},  Site: {}".format(str(track.track_id), class_name, (coordinate)))
-                    if id in old_objects_positions:
-                        if (old_objects_positions[id][1] == -1) and coordinate[1] == 1:
-                            inside_persons_count = inside_persons_count + 1
-                        elif (old_objects_positions[id][1] == 1) and coordinate[1] == -1:
-                            inside_persons_count = inside_persons_count - 1
-                    
-            # print number of person inside
-            print("shoes passed: {}".format(inside_persons_count))
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(frame, f'Shoes passed: {inside_persons_count}', (0 + 10, height- 10), font, 0.5, (255,255,0), 1, cv2.LINE_4)       
-       
-       
-       
-       
-       
-       
-       
+        
+        
         # delete detections that are not in allowed_classes
         bboxes = np.delete(bboxes, deleted_indx, axis=0)
         scores = np.delete(scores, deleted_indx, axis=0)
@@ -269,6 +218,14 @@ def main(_argv):
         tracker.predict()
         tracker.update(detections)
 
+        old_objects_positions = new_objects_positions
+        new_objects_positions = {}
+
+        actual_rectangles = []
+        detected_ids = []
+
+        inside_objects = []
+
         # update tracks
         for track in tracker.tracks:
             if not track.is_confirmed() or track.time_since_update > 1:
@@ -286,6 +243,52 @@ def main(_argv):
         # if enable info flag then print details about each track
             if FLAGS.info:
                 print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name, (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
+
+        # save objects positions
+            px = ( int((bbox[2] + bbox[0])/2), int((bbox[1] + bbox[3])/2) )
+            new_objects_positions[track.track_id] = [px, 0]
+        
+        # save rectangle
+            actual_rectangles.append([int(bbox[0]), int(bbox[1]), int(bbox[2]-bbox[0]), int(bbox[3]-bbox[1])])
+            detected_ids.append(track.track_id)
+
+
+        if FLAGS.count:
+
+            line1 = [(650, 250), (1000, 250)] 
+            #line2 = [(1150,150), (1500,150)]
+            cv2.line(frame, line1[0], line1[1], (0, 255, 255), 5)
+            #cv2.line(frame, line2[0], line2[1], (0, 255, 255), 5) 
+
+            # draw vector meaning interior
+            start_point = (int((line1[0][0] + line1[1][0])/2), int((line1[0][1] + line1[1][1])/2))
+
+            end_point =  ((int((start_point[1] - line1[0][1])/2)) + start_point[0], (int((start_point[0] - line1[0][0])/2) * (-1)) + start_point[1])
+
+            n = (end_point[0] - start_point[0], end_point[1] - start_point[1])
+            id = str(track.track_id)
+
+            for id, coordinate in new_objects_positions.items():
+                v = ( coordinate[0][0] - start_point[0], coordinate[0][1] - start_point[1] )
+                # calculate scalar product 
+                coordinate[1] = np.sign(v[0]*n[0] + v[1]*n[1])
+                print("Tracker ID: {}, Class: {},  Site: {}".format(str(track.track_id), class_name, (coordinate)))
+                if id in old_objects_positions:
+                    if (old_objects_positions[id][1] == -1) :
+                        inside_persons_count = inside_persons_count - 1
+                    elif (old_objects_positions[id][1] == 1) :
+                        inside_persons_count = inside_persons_count + 1
+                    """
+                    if (old_objects_positions[id][1] == -1) and coordinate[1] == 1:
+                        inside_persons_count = inside_persons_count - 1
+                    elif (old_objects_positions[id][1] == 1) and coordinate[1] == -1:
+                        inside_persons_count = inside_persons_count + 1
+                    """
+            # print number of person inside
+            print("shoes passed: {}".format(inside_persons_count))
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(frame, f'shoes passed: {inside_persons_count}', (0 + 10, height- 10), font, 0.5, (255,255,0), 1, cv2.LINE_4)
+
 
         # calculate frames per second of running detections
         fps = 1.0 / (time.time() - start_time)
