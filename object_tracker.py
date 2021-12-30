@@ -254,40 +254,39 @@ def main(_argv):
 
 
         if FLAGS.count:
-
-            line1 = [(650, 250), (1000, 250)] 
+            #for test-shoes-longer.mp4    
+            line1 = [(400, 150), (700, 150)] 
+            line2 = [(800, 150), (1100, 150)]
+            #for test-shoe.mp4
+            #line1 = [(650, 250), (1000, 250)] 
             #line2 = [(1150,150), (1500,150)]
+            
             cv2.line(frame, line1[0], line1[1], (0, 255, 255), 5)
-            #cv2.line(frame, line2[0], line2[1], (0, 255, 255), 5) 
+            cv2.line(frame, line2[0], line2[1], (0, 255, 255), 5) 
 
             # draw vector meaning interior
             start_point = (int((line1[0][0] + line1[1][0])/2), int((line1[0][1] + line1[1][1])/2))
-
             end_point =  ((int((start_point[1] - line1[0][1])/2)) + start_point[0], (int((start_point[0] - line1[0][0])/2) * (-1)) + start_point[1])
+            
 
-            n = (end_point[0] - start_point[0], end_point[1] - start_point[1])
+            n1 = (end_point[0] - start_point[0], end_point[1] - start_point[1])
             id = str(track.track_id)
 
             for id, coordinate in new_objects_positions.items():
-                v = ( coordinate[0][0] - start_point[0], coordinate[0][1] - start_point[1] )
+                v1 = ( coordinate[0][0] - start_point[0], coordinate[0][1] - start_point[1] )
                 # calculate scalar product 
-                coordinate[1] = np.sign(v[0]*n[0] + v[1]*n[1])
+                coordinate[1] = np.sign(v1[0]*n1[0] + v1[1]*n1[1])
                 print("Tracker ID: {}, Class: {},  Site: {}".format(str(track.track_id), class_name, (coordinate)))
                 if id in old_objects_positions:
-                    if (old_objects_positions[id][1] == -1) :
-                        inside_persons_count = inside_persons_count - 1
-                    elif (old_objects_positions[id][1] == 1) :
-                        inside_persons_count = inside_persons_count + 1
-                    """
                     if (old_objects_positions[id][1] == -1) and coordinate[1] == 1:
                         inside_persons_count = inside_persons_count - 1
                     elif (old_objects_positions[id][1] == 1) and coordinate[1] == -1:
                         inside_persons_count = inside_persons_count + 1
-                    """
+                    
             # print number of person inside
-            print("shoes passed: {}".format(inside_persons_count))
+            print("shoes passed line1: {}".format(inside_persons_count))
             font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(frame, f'shoes passed: {inside_persons_count}', (0 + 10, height- 10), font, 0.5, (255,255,0), 1, cv2.LINE_4)
+            cv2.putText(frame, f'shoes passed line1: {inside_persons_count}', (0 + 10, height- 10), font, 0.5, (255,255,0), 1, cv2.LINE_4)
 
 
         # calculate frames per second of running detections
