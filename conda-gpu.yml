@@ -8,10 +8,12 @@ dependencies:
   - cudnn
   - cudatoolkit==10.1.243
   - pip:
-    - tensorflow-gpu==2.3.0rc0
+    - tensorflow-gpu==2.5.0rc0
     - opencv-python==4.1.1.26
     - lxml
     - tqdm
     - absl-py
     - easydict
     - pillow
+    - pafy==0.5.5
+    - youtube-dl==2021.6.6

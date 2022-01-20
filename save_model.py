@@ -53,4 +53,8 @@ def save_tf():
 def main(_argv):
   save_tf()
 
-
+if __name__ == '__main__':
+    try:
+        app.run(main)
+    except SystemExit:
+        pass
