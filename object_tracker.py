@@ -41,9 +41,19 @@ import pafy
 class VehiclesCounting():
     def __init__(self, file_counter_log_name, framework='tf', weights='./checkpoints/yolov4-416',
                 size=416, tiny=True, model='yolov4', video='./data/videos/test-shoes-longer.mp4',
-                output='./outputs/final.avi', output_format='XVID', iou=0.45, score=0.5,
+                output='./outputs/final-final.avi', output_format='XVID', iou=0.01, score=0.99,
                 dont_show=False, info=True,
                 detect_line_position=0.25, detect_line_angle=0):
+        #final 0.45 0.5 // =74
+        #test1 0.01 0.5 // =25
+        #test2 0.5 0.99 // =21
+        #test3 0.01 0.99 // =15
+        #test4 0.01 0.99 @tracker adcthres 0.5->0.6 // =21
+        #test5 0.01 0.99 @tracker maxiou0.7->0.5 adcthres 0.5  // = 26
+        #test6 0.01 0.99 @tracker maxiou0.7->0.9 adcthres 0.5  // = 20
+        #test7 0.01 0.99 @preprocessing maxbboxoverlap 0.5  // =21
+        #test8 0.01 0.99 @preprocessing maxbboxoverlap 0.9  // =21
+        #test9 0.01 0.99 @preprocessing maxbboxoverlap 0.1  // =21
         '''
         - cam_name: input your camera name
         - framework: choose your model framework (tf, tflite, trt)
@@ -172,6 +182,7 @@ class VehiclesCounting():
 
         class_counter1 = Counter()  # store counts of each detected class
         class_counter2 = Counter()
+        class_counter3 = Counter()
         already_counted = deque(maxlen=50)  # temporary memory for storing counted IDs
         intersect_info = []  # initialise intersection list
 
@@ -307,10 +318,20 @@ class VehiclesCounting():
             x22 = 1100
             y22 = int(self._detect_line_position * frame.shape[0] - yp)
             line2 = [(x12, y12), (x22, y22)]
+
+            #line3
+            x13 = 500
+            y13 = int(self._detect_line_position * frame.shape[0] + yp)
+            x23 = 1000
+            y23 = int(self._detect_line_position * frame.shape[0] - yp)
+            line3 = [(x13, y13+450), (x23, y23+450)]
             
             # draw yellow line
             cv2.line(frame, line[0], line[1], (0, 255, 255), 2)
             cv2.line(frame, line2[0], line2[1], (0, 255, 255), 2)
+
+            # draw red line
+            cv2.line(frame, line3[0], line3[1], (0, 255, 255), 2)
 
             # update tracks
             for track in tracker.tracks:
@@ -368,6 +389,25 @@ class VehiclesCounting():
                             up_count += 1
                         if angle < 0:
                             down_count += 1
+                
+                if self._intersect(midpoint, previous_midpoint, line3[0], line3[1]) and track.track_id not in already_counted:
+                        class_counter3[class_name] += 1
+                        total_counter += 1
+
+                        # draw red line for line3
+                        lineR3 = [(x13, y13+50), (x23, y23+50)]
+                        cv2.line(frame, lineR3[0], lineR3[1], (0, 0, 255), 2)
+
+                        already_counted.append(track.track_id)  # Set already counted for ID to true.
+
+                        intersection_time = datetime.datetime.now() - datetime.timedelta(microseconds=datetime.datetime.now().microsecond)
+                        angle = self._vector_angle(origin_midpoint, origin_previous_midpoint)
+                        intersect_info.append([class_name, origin_midpoint, angle, intersection_time])
+
+                        if angle > 0:
+                            up_count += 1
+                        if angle < 0:
+                            down_count += 1
 
 
 
@@ -380,6 +420,7 @@ class VehiclesCounting():
                     adc = "%.2f" % (track.adc * 100) + "%"  # Average detection confidence
                     #cv2.putText(frame, str(class_name), (int(bbox[0]), int(bbox[3])), 0,
                     #                1e-3 * frame.shape[0], (0, 255, 0), 2)
+                    
                     cv2.putText(frame, 'ADC: ' + adc, (int(bbox[0]), int(bbox[1])), 0,
                                     0.9e-3 * frame.shape[0], (0, 255, 0), 2)
 
@@ -419,6 +460,12 @@ class VehiclesCounting():
             for cls in class_counter2:
                 class_count2 = class_counter2[cls]
                 cv2.putText(frame, "Right line " + str(cls) + ": " + str(class_count2), (5, 475), cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                            1, (0, 255, 255), 1)
+                y += 0.05 * frame.shape[0]
+
+            for cls in class_counter3:
+                class_count3 = class_counter2[cls]
+                cv2.putText(frame, "Not pass QC " + str(cls) + ": " + str(class_count3), (5, 500), cv2.FONT_HERSHEY_COMPLEX_SMALL,
                             1, (0, 255, 255), 1)
                 y += 0.05 * frame.shape[0]
 

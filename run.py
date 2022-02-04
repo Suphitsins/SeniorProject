@@ -1,4 +1,4 @@
-from object_tracker_test import VehiclesCounting
+from object_tracker import VehiclesCounting
 
 vc = VehiclesCounting('Lasting QC')
 
