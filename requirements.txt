@@ -1,6 +1,3 @@
-tesdaguahlu
-qweiourfhqlwiuefhaqe
-
 opencv-python
 lxml
 tqdm
