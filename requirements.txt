@@ -1,5 +1,3 @@
-testtttgit
-
 opencv-python
 lxml
 tqdm
