@@ -1,5 +1,3 @@
-test-brance testttttt
-
 opencv-python
 lxml
 tqdm
